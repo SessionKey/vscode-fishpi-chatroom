@@ -1,0 +1,103 @@
+{
+  "name": "fishpi-chatroom",
+  "displayName": "fishpi-chatroom",
+  "description": "摸鱼派聊天室",
+  "version": "0.0.1",
+  "icon": "./resources/icon.png",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "fishpi-chatroom.login",
+        "title": "登录聊天室"
+      },
+      {
+        "command": "fishpi-chatroom.logout",
+        "title": "退出登录"
+      },
+      {
+        "command": "fishpi-chatroom.openChat",
+        "title": "打开聊天室"
+      }
+    ],
+    "configuration": {
+      "title": "摸鱼派聊天室",
+      "properties": {
+        "fishpi.sessionId": {
+          "type": "string",
+          "default": "",
+          "description": "摸鱼派会话ID"
+        },
+        "fishpi.username": {
+          "type": "string",
+          "default": "",
+          "description": "摸鱼派用户名"
+        },
+        "fishpi.showImages": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否显示头像和图片"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "fishpi-chatroom",
+          "title": "摸鱼派聊天室",
+          "icon": "resources/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "fishpi-chatroom": [
+        {
+          "id": "fishpi-chat",
+          "name": "聊天",
+          "type": "webview"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.96.0",
+    "@types/ws": "^8.5.13",
+    "@typescript-eslint/eslint-plugin": "^8.17.0",
+    "@typescript-eslint/parser": "^8.17.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "bufferutil": "^4.0.9",
+    "eslint": "^9.16.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.7.2",
+    "utf-8-validate": "^6.0.5",
+    "webpack": "^5.95.0",
+    "webpack-cli": "^5.1.4",
+    "ws": "^8.18.0"
+  },
+  "dependencies": {
+    "axios": "^1.7.9"
+  }
+}
