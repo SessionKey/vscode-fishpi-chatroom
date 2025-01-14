@@ -3,16 +3,30 @@ import { ChatService } from './ChatService';
 import { SessionConfig } from './config/SessionConfig';
 import { AuthService } from './services/AuthService';
 
+interface SearchUsersResponse {
+    msg: string;
+    code: number;
+    data?: Array<{
+        userNameLowerCase: string;
+        userAvatarURL: string;
+        userAvatarURL20: string;
+        userName: string;
+        userAvatarURL210: string;
+        userAvatarURL48: string;
+    }>;
+}
+
 export class ChatViewProvider implements vscode.WebviewViewProvider {
     private static instance: ChatViewProvider | undefined;
     private _view?: vscode.WebviewView;
     private chatService?: ChatService;
     private messageHistory: any[] = [];
-    private isFirstConnection: boolean = true;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
     ) {
+
+        console.log('ChatViewProvider created')
         if (ChatViewProvider.instance) {
             return ChatViewProvider.instance;
         }
@@ -33,9 +47,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
         if (!this.chatService) {
             this.chatService = new ChatService((message) => {
-                if (this.isFirstConnection) {
-                    this.messageHistory.push(message);
-                }
+                this.messageHistory.push(message);
                 this._view?.webview.postMessage({
                     type: 'receiveMessage',
                     data: message
@@ -52,7 +64,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     if (sessionId) {
                         this.chatService?.setSessionId(sessionId);
                         try {
-                            this.isFirstConnection = true;
                             await this.chatService?.connect();
                             const username = SessionConfig.getUsername();
                             this._view?.webview.postMessage({
@@ -74,20 +85,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await SessionConfig.setSessionId(sessionId);
                         await SessionConfig.setUsername(message.username);
                         this.chatService?.setSessionId(sessionId);
-                        this.isFirstConnection = true;
                         await this.chatService?.connect();
                         this._view?.webview.postMessage({
                             type: 'loginSuccess',
                             history: this.messageHistory,
                             username: message.username
                         });
+                        https://fishpi.cn/users/names
                         vscode.window.showInformationMessage('登录成功');
                     } catch (error) {
                         vscode.window.showErrorMessage(error instanceof Error ? error.message : '登录失败');
                     }
                     break;
+
                 case 'sendMessage':
                     await this.chatService?.sendMessage(message.content);
+                    break;
+                case 'logout':
+                    await SessionConfig.clear();
+                    this.chatService?.disconnect();
+                    this._view?.webview.postMessage({ type: 'notLoggedIn' });
                     break;
                 case 'showError':
                     vscode.window.showErrorMessage(message.message);
@@ -142,6 +159,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         showImages
                     });
                     break;
+                case 'searchUsers':
+                    try {
+                        const response = await fetch('https://fishpi.cn/users/names', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ name: message.query })
+                        });
+                        const result = await response.json() as SearchUsersResponse;
+                        this._view?.webview.postMessage({
+                            type: 'searchUsersResult',
+                            users: result.data || []
+                        });
+                    } catch (error) {
+                        console.error('Error searching users:', error);
+                        this._view?.webview.postMessage({
+                            type: 'searchUsersResult',
+                            users: []
+                        });
+                    }
+                    break;
             }
         });
 
@@ -150,7 +189,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 const newSessionId = SessionConfig.getSessionId();
                 if (newSessionId && this.chatService) {
                     this.chatService.setSessionId(newSessionId);
-                    this.isFirstConnection = true;
                     this.chatService.connect().then(() => {
                         this._view?.webview.postMessage({
                             type: 'loginSuccess',
@@ -166,7 +204,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     public dispose() {
         this.chatService?.disconnect();
-        this.isFirstConnection = false;
         ChatViewProvider.instance = undefined;
     }
 

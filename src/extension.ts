@@ -41,9 +41,9 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			const sessionId = await AuthService.login(username, password);
-			await SessionConfig.setSessionId(sessionId);
-			await SessionConfig.setUsername(username);
+			// const sessionId = await AuthService.login(username, password);
+			// await SessionConfig.setSessionId(sessionId);
+			// await SessionConfig.setUsername(username);
 			vscode.window.showInformationMessage('登录成功');
 		} catch (error) {
 			vscode.window.showErrorMessage(error instanceof Error ? error.message : '登录失败');

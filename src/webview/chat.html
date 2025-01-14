@@ -294,6 +294,54 @@
             padding-top: 8px;
             color: var(--vscode-textLink-foreground);
         }
+
+        button.logout-button {
+            background-color: var(--vscode-errorForeground);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            margin-left: auto;
+        }
+
+        button.logout-button:hover {
+            opacity: 0.8;
+        }
+
+        .mention-popup {
+            position: absolute;
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-widget-border);
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+            z-index: 1000;
+        }
+
+        .mention-item {
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .mention-item:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .mention-item img {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .mention-item.selected {
+            background: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+        }
     </style>
 </head>
 
@@ -311,6 +359,7 @@
                 <input type="checkbox" id="showImagesToggle" checked>
                 <span>显示头像和图片</span>
             </label>
+            <button id="logoutButton" class="logout-button">退出登录</button>
         </div>
         <div class="message-list" id="messageList">
             <!-- 消息列表将在这里动态添加 -->
@@ -332,6 +381,7 @@
         <div id="emojiPicker" class="emoji-picker hidden">
             <!-- 表情将在这里动态添加 -->
         </div>
+        <div class="mention-popup" id="mentionPopup"></div>
     </div>
 
     <script>
@@ -503,7 +553,7 @@
             // 添加用户名
             const usernameElement = document.createElement('div');
             usernameElement.className = 'username';
-            usernameElement.textContent = nickname || username;
+            usernameElement.textContent = nickname ? `${nickname} (${username})` : username;
             contentContainer.appendChild(usernameElement);
 
             // 处理消息内容
@@ -626,7 +676,7 @@
             '😏', '😮', '😱', '😨', '😰', '😢', '😥', '😤',
             '😠', '😡', '🤬', '🤮', '🤢', '🤕', '🤒', '😷',
             '🤧', '🥵', '🥶', '😴', '🤤', '😪', '😇', '🤠',
-            '🤡', '🥳', '🙄', '😈', '👿', '👹', '👺', '💀'
+            '🤡', '🥳', '🙄', '😈', '😆', '👹', '🤔', '💀'
         ];
 
         const emojiPicker = document.getElementById('emojiPicker');
@@ -805,6 +855,129 @@
             const messageInput = document.getElementById('messageInput');
             if (!shortcutList.contains(e.target) && e.target !== messageInput) {
                 shortcutList.style.display = 'none';
+            }
+        });
+
+        document.getElementById('logoutButton').addEventListener('click', () => {
+            vscode.postMessage({
+                type: 'logout'
+            });
+        });
+
+        let mentionPopup = document.getElementById('mentionPopup');
+        let mentionIndex = -1;
+        let mentionUsers = [];
+        let mentionStart = -1;
+
+        messageInput.addEventListener('input', async function(e) {
+            const cursorPosition = this.selectionStart;
+            const text = this.value;
+            const beforeCursor = text.slice(0, cursorPosition);
+            const match = beforeCursor.match(/@(\w*)$/);
+            if (match) {
+                const query = match[1];
+                mentionStart = cursorPosition - match[0].length;
+                
+                // 发送消息给扩展处理
+                vscode.postMessage({
+                    type: 'searchUsers',
+                    query: query
+                });
+            } else {
+                hideMentionPopup();
+            }
+        });
+
+        messageInput.addEventListener('keydown', function(e) {
+            if (!mentionPopup.style.display || mentionPopup.style.display === 'none') {
+                return;
+            }
+
+            switch(e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    mentionIndex = Math.min(mentionIndex + 1, mentionUsers.length - 1);
+                    updateMentionSelection();
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    mentionIndex = Math.max(mentionIndex - 1, 0);
+                    updateMentionSelection();
+                    break;
+                case 'Enter':
+                    e.preventDefault();
+                    if (mentionIndex >= 0) {
+                        selectMentionUser(mentionUsers[mentionIndex]);
+                    }
+                    break;
+                case 'Escape':
+                    hideMentionPopup();
+                    break;
+            }
+        });
+
+        function showMentionPopup(users) {
+            mentionPopup.innerHTML = users.map((user, index) => `
+                <div class="mention-item ${index === mentionIndex ? 'selected' : ''}" onclick="selectMentionUser(${JSON.stringify(user).replace(/"/g, '&quot;')})">
+                    <img src="${user.userAvatarURL20}" alt="${user.userName}">
+                    <span>${user.userName}</span>
+                </div>
+            `).join('');
+
+            const inputRect = messageInput.getBoundingClientRect();
+            const lineHeight = parseInt(window.getComputedStyle(messageInput).lineHeight);
+            const cursorPosition = getCursorPosition(messageInput);
+            
+            mentionPopup.style.display = 'block';
+            mentionPopup.style.left = `${inputRect.left + 10}px`;
+            mentionPopup.style.top = `${inputRect.top - mentionPopup.offsetHeight - 5}px`;
+        }
+
+        function hideMentionPopup() {
+            mentionPopup.style.display = 'none';
+            mentionIndex = -1;
+            mentionUsers = [];
+            mentionStart = -1;
+        }
+
+        function updateMentionSelection() {
+            const items = mentionPopup.getElementsByClassName('mention-item');
+            Array.from(items).forEach((item, index) => {
+                item.classList.toggle('selected', index === mentionIndex);
+            });
+        }
+
+        function selectMentionUser(user) {
+            const text = messageInput.value;
+            const newText = text.slice(0, mentionStart) + '@' + user.userName + ' ' + text.slice(messageInput.selectionStart);
+            messageInput.value = newText;
+            messageInput.selectionStart = messageInput.selectionEnd = mentionStart + user.userName.length + 2;
+            hideMentionPopup();
+        }
+
+        function getCursorPosition(input) {
+            const selection = input.selectionStart;
+            const text = input.value.substr(0, selection);
+            const lines = text.split('\n');
+            return {
+                line: lines.length - 1,
+                character: lines[lines.length - 1].length
+            };
+        }
+
+        // 添加处理扩展返回的用户搜索结果
+        window.addEventListener('message', event => {
+            const message = event.data;
+            switch (message.type) {
+                case 'searchUsersResult':
+                    if (message.users && message.users.length > 0) {
+                        mentionUsers = message.users;
+                        showMentionPopup(mentionUsers);
+                    } else {
+                        hideMentionPopup();
+                    }
+                    break;
+                // ... 其他消息处理 ...
             }
         });
     </script>
