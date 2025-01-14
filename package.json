@@ -3,9 +3,16 @@
   "displayName": "fishpi-chatroom",
   "description": "摸鱼派聊天室",
   "version": "0.0.1",
-  "icon": "./resources/icon.png",
+  "license": "MIT",
+  "publisher": "cuihua",
+  "icon": "resources/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SessionKey/vscode-fishpi-chatroom"
+  },
   "engines": {
-    "vscode": "^1.96.0"
+    "vscode": "^1.1.0",
+    "node": ">=18.0.0"
   },
   "categories": [
     "Other"
@@ -77,27 +84,30 @@
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "vsce:package": "vsce package",
+    "vsce:publish": "vsce publish"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.10",
-    "@types/node": "20.x",
-    "@types/vscode": "^1.96.0",
-    "@types/ws": "^8.5.13",
-    "@typescript-eslint/eslint-plugin": "^8.17.0",
-    "@typescript-eslint/parser": "^8.17.0",
-    "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1",
-    "bufferutil": "^4.0.9",
-    "eslint": "^9.16.0",
-    "ts-loader": "^9.5.1",
-    "typescript": "^5.7.2",
-    "utf-8-validate": "^6.0.5",
-    "webpack": "^5.95.0",
+    "@types/mocha": "^10.0.1",
+    "@types/node": "^18.x",
+    "@types/vscode": "^1.1.0",
+    "@types/ws": "^8.5.5",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "@typescript-eslint/parser": "^6.13.1",
+    "@vscode/test-cli": "^0.0.4",
+    "@vscode/test-electron": "^2.3.8",
+    "@vscode/vsce": "^3.2.1",
+    "bufferutil": "^4.0.7",
+    "eslint": "^8.55.0",
+    "ts-loader": "^9.4.4",
+    "typescript": "^5.3.3",
+    "utf-8-validate": "^6.0.3",
+    "webpack": "^5.88.2",
     "webpack-cli": "^5.1.4",
-    "ws": "^8.18.0"
+    "ws": "^8.13.0"
   },
   "dependencies": {
-    "axios": "^1.7.9"
+    "axios": "^1.6.2"
   }
 }

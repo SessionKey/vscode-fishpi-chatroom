@@ -42,6 +42,7 @@
             padding: 10px;
             margin-top: 40px;
             margin-bottom: 60px;
+            scroll-behavior: smooth;
         }
 
         .message-item {
@@ -214,6 +215,85 @@
         a:hover {
             text-decoration: underline;
         }
+
+        .unread-messages {
+            position: fixed;
+            bottom: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            display: none;
+            z-index: 1000;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            100% {
+                transform: translateX(-50%) translateY(0);
+            }
+
+            50% {
+                transform: translateX(-50%) translateY(-5px);
+            }
+        }
+
+        .unread-messages:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+
+        .shortcut-list {
+            position: absolute;
+            bottom: 60px;
+            left: 10px;
+            right: 10px;
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-editor-lineHighlightBorder);
+            border-radius: 4px;
+            padding: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+
+        .shortcut-item {
+            padding: 8px;
+            cursor: pointer;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .shortcut-item:hover {
+            background: var(--vscode-editor-inactiveSelectionBackground);
+        }
+
+        .shortcut-item .delete-btn {
+            opacity: 0;
+            transition: opacity 0.2s;
+            padding: 2px 6px;
+            margin-left: 8px;
+            border-radius: 4px;
+        }
+
+        .shortcut-item:hover .delete-btn {
+            opacity: 1;
+        }
+
+        .add-shortcut {
+            border-top: 1px solid var(--vscode-editor-lineHighlightBorder);
+            margin-top: 8px;
+            padding-top: 8px;
+            color: var(--vscode-textLink-foreground);
+        }
     </style>
 </head>
 
@@ -235,9 +315,18 @@
         <div class="message-list" id="messageList">
             <!-- 消息列表将在这里动态添加 -->
         </div>
+        <div class="unread-messages" id="unreadMessages">
+            有新消息
+        </div>
+        <div class="shortcut-list" id="shortcutList">
+            <!-- 快捷语句列表将在这里动态添加 -->
+            <div class="shortcut-item add-shortcut" id="addShortcut">
+                + 添加快捷语句
+            </div>
+        </div>
         <div class="input-container">
             <button class="emoji-button" id="emojiButton">😊</button>
-            <input type="text" id="messageInput" placeholder="输入消息...">
+            <input type="text" id="messageInput" placeholder="发送消息或斜杠( / )   ">
             <button id="sendButton">发送</button>
         </div>
         <div id="emojiPicker" class="emoji-picker hidden">
@@ -250,6 +339,7 @@
         const loginForm = document.getElementById('loginForm');
         const chatContainer = document.getElementById('chatContainer');
         let currentUser = ''; // 保存当前登录用户名
+        let unreadCount = 0; // 添加未读消息计数变量
 
         // 页面加载时检查登录状态
         vscode.postMessage({
@@ -347,8 +437,40 @@
 
             updateMessageContent(messageElement, message);
 
+            // 在添加消息前检查滚动位置
+            const isAtBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < 50;
+
+            // 检查消息数量，如果超过1000条，删除最早的消息
+            const MAX_MESSAGES = 1000;
+            const messages = messageList.getElementsByClassName('message-item');
+            if (messages.length >= MAX_MESSAGES) {
+                const messagesToRemove = messages.length - MAX_MESSAGES + 1; // +1 为即将添加的新消息留出空间
+                for (let i = 0; i < messagesToRemove; i++) {
+                    if (messages[0]) {
+                        messages[0].remove();
+                    }
+                }
+            }
+
+            // 添加消息
             messageList.appendChild(messageElement);
-            messageList.scrollTop = messageList.scrollHeight;
+
+            // 根据之前的位置决定是否滚动
+            if (isAtBottom || isSelf) {
+                // 如果之前在底部或者是自己发送的消息，自动滚动到底部
+                setTimeout(() => {
+                    messageList.scrollTop = messageList.scrollHeight;
+                }, 0);
+                // 重置未读消息计数
+                unreadCount = 0;
+                document.getElementById('unreadMessages').style.display = 'none';
+            } else {
+                // 增加未读消息计数并更新提示
+                unreadCount++;
+                const unreadMessages = document.getElementById('unreadMessages');
+                unreadMessages.textContent = `${unreadCount} 条新消息`;
+                unreadMessages.style.display = 'block';
+            }
         }
 
         function updateMessageContent(element, message) {
@@ -387,22 +509,83 @@
             // 处理消息内容
             const messageContent = document.createElement('div');
             messageContent.className = 'content';
-            
-            // 处理图片链接
-            const imgRegex = /(https?:\/\/[^\s<]+?\.(?:jpg|jpeg|gif|png|webp))/gi;
-            let processedContent = content;
-            
-            if (showImages) {
-                processedContent = content.replace(imgRegex, (match) => {
-                    return `<img src="${match}" class="message-image" alt="聊天图片">`;
-                });
-            } else {
-                processedContent = content.replace(imgRegex, (match) => {
-                    return `<a href="${match}" target="_blank">[图片]</a>`;
+
+            // 创建一个临时的 div 来解析 HTML 内容
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+
+            // 处理所有图片标签
+            const imgTags = tempDiv.getElementsByTagName('img');
+            Array.from(imgTags).forEach(img => {
+                const originalSrc = img.getAttribute('src');
+                try {
+                    const decodedUrl = decodeURIComponent(originalSrc);
+                    const encodedUrl = encodeURI(decodedUrl);
+                    img.setAttribute('src', encodedUrl);
+                    img.setAttribute('class', 'message-image');
+                    img.setAttribute('alt', '聊天图片');
+                    img.setAttribute('onerror', 'this.style.display="none"');
+                } catch (e) {
+                    img.setAttribute('src', originalSrc);
+                    img.setAttribute('class', 'message-image');
+                    img.setAttribute('alt', '聊天图片');
+                    img.setAttribute('onerror', 'this.style.display="none"');
+                }
+            });
+
+            // 处理纯文本中的图片链接
+            const textNodes = [];
+            const walk = document.createTreeWalker(tempDiv, NodeFilter.SHOW_TEXT, null, false);
+            let node;
+            while (node = walk.nextNode()) {
+                textNodes.push(node);
+            }
+
+            const imgRegex = /https?:\/\/[^\s<>"']+?\.(?:jpg|jpeg|gif|png|webp)(?:[?#][^\s<>"']*)?/gi;
+            textNodes.forEach(textNode => {
+                const text = textNode.textContent;
+                if (imgRegex.test(text)) {
+                    const span = document.createElement('span');
+                    let processedContent = text;
+                    if (showImages) {
+                        processedContent = text.replace(imgRegex, (match) => {
+                            try {
+                                const decodedUrl = decodeURIComponent(match);
+                                const encodedUrl = encodeURI(decodedUrl);
+                                return `<img src="${encodedUrl}" class="message-image" alt="聊天图片" onerror="this.style.display='none'">`;
+                            } catch (e) {
+                                return `<img src="${match}" class="message-image" alt="聊天图片" onerror="this.style.display='none'">`;
+                            }
+                        });
+                    } else {
+                        processedContent = text.replace(imgRegex, (match) => {
+                            try {
+                                const decodedUrl = decodeURIComponent(match);
+                                const encodedUrl = encodeURI(decodedUrl);
+                                return `<a href="${encodedUrl}" target="_blank">[图片]</a>`;
+                            } catch (e) {
+                                return `<a href="${match}" target="_blank">[图片]</a>`;
+                            }
+                        });
+                    }
+                    span.innerHTML = processedContent;
+                    textNode.parentNode.replaceChild(span, textNode);
+                }
+            });
+
+            // 根据显示设置处理图片可见性
+            if (!showImages) {
+                const allImages = tempDiv.getElementsByTagName('img');
+                Array.from(allImages).forEach(img => {
+                    const link = document.createElement('a');
+                    link.href = img.src;
+                    link.target = '_blank';
+                    link.textContent = '[图片]';
+                    img.parentNode.replaceChild(link, img);
                 });
             }
 
-            messageContent.innerHTML = processedContent;
+            messageContent.innerHTML = tempDiv.innerHTML;
             contentContainer.appendChild(messageContent);
             element.appendChild(contentContainer);
 
@@ -484,6 +667,145 @@
                     userAvatarURL48: messageElement.getAttribute('data-avatar')
                 });
             });
+        });
+
+        // 添加未读消息点击事件
+        document.getElementById('unreadMessages').addEventListener('click', () => {
+            const messageList = document.getElementById('messageList');
+            messageList.scrollTop = messageList.scrollHeight;
+            document.getElementById('unreadMessages').style.display = 'none';
+            unreadCount = 0; // 重置未读消息计数
+        });
+
+        // 监听滚动事件
+        document.getElementById('messageList').addEventListener('scroll', () => {
+            const messageList = document.getElementById('messageList');
+            const isAtBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < 50;
+
+            if (isAtBottom) {
+                document.getElementById('unreadMessages').style.display = 'none';
+                unreadCount = 0; // 重置未读消息计数
+            }
+        });
+
+        // 存储快捷语句的数组
+        let shortcuts = JSON.parse(localStorage.getItem('chatShortcuts') || '[]');
+
+        // 如果是第一次使用（没有快捷语句），添加预设指令
+        if (shortcuts.length === 0) {
+            shortcuts = [
+                '凌 捡鱼叉',
+                '凌 biu vmet',
+                '凌 背包'
+            ];
+            localStorage.setItem('chatShortcuts', JSON.stringify(shortcuts));
+        }
+
+        // 初始化快捷语句列表
+        function initShortcuts() {
+            const shortcutList = document.getElementById('shortcutList');
+            const addShortcutItem = document.getElementById('addShortcut');
+
+            // 清空现有列表（除了添加按钮）
+            while (shortcutList.firstChild && shortcutList.firstChild !== addShortcutItem) {
+                shortcutList.removeChild(shortcutList.firstChild);
+            }
+
+            // 添加所有快捷语句
+            shortcuts.forEach((shortcut, index) => {
+                const item = document.createElement('div');
+                item.className = 'shortcut-item';
+                item.innerHTML = `
+                    <span>${shortcut}</span>
+                    <button class="delete-btn">×</button>
+                `;
+
+                // 点击整个快捷语句项发送快捷语句
+                item.addEventListener('click', () => {
+                    const messageInput = document.getElementById('messageInput');
+                    messageInput.value = shortcut;
+                    shortcutList.style.display = 'none';
+                    messageInput.focus();
+                });
+
+                // 删除快捷语句
+                const deleteBtn = item.querySelector('.delete-btn');
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation(); // 阻止事件冒泡，避免触发父元素的点击事件
+                    // 发送消息给 VS Code 扩展，请求确认删除
+                    vscode.postMessage({
+                        type: 'confirmDelete',
+                        index: index,
+                        shortcut: shortcut
+                    });
+                });
+
+                shortcutList.insertBefore(item, addShortcutItem);
+            });
+        }
+
+        // 监听输入框变化
+        const messageInput = document.getElementById('messageInput');
+        messageInput.addEventListener('input', (e) => {
+            const shortcutList = document.getElementById('shortcutList');
+            if (e.target.value === '/') {
+                shortcutList.style.display = 'block';
+                initShortcuts();
+            } else if (!e.target.value.startsWith('/')) {
+                shortcutList.style.display = 'none';
+            }
+        });
+
+        // 添加快捷语句
+        const addShortcut = document.getElementById('addShortcut');
+        addShortcut.addEventListener('click', (e) => {
+            e.stopPropagation(); // 阻止事件冒泡
+            // 发送消息给 VS Code 扩展，请求显示输入框
+            vscode.postMessage({
+                type: 'showInputBox',
+                message: '请输入快捷语句',
+                detail: '提示：\n1. 每个快捷语句都应该简短且有意义\n2. 不要添加重复的快捷语句\n3. 可以使用空格分隔命令和参数'
+            });
+        });
+
+        // 监听来自 VS Code 的消息
+        window.addEventListener('message', event => {
+            const message = event.data;
+            switch (message.type) {
+                case 'addShortcut':
+                    if (message.value && message.value.trim()) {
+                        const newShortcut = message.value.trim();
+                        // 检查是否重复
+                        if (shortcuts.includes(newShortcut)) {
+                            vscode.postMessage({
+                                type: 'showError',
+                                message: '该快捷语句已存在'
+                            });
+                            return;
+                        }
+                        shortcuts.push(newShortcut);
+                        localStorage.setItem('chatShortcuts', JSON.stringify(shortcuts));
+                        initShortcuts();
+                    }
+                    break;
+                case 'deleteShortcut':
+                    if (message.index >= 0 && message.index < shortcuts.length) {
+                        shortcuts.splice(message.index, 1);
+                        localStorage.setItem('chatShortcuts', JSON.stringify(shortcuts));
+                        initShortcuts();
+                    }
+                    break;
+                // ... 其他消息处理 ...
+            }
+        });
+
+        // 点击其他地方关闭快捷语句列表
+        document.addEventListener('click', (e) => {
+            const shortcutList = document.getElementById('shortcutList');
+            const messageInput = document.getElementById('messageInput');
+            if (!shortcutList.contains(e.target) && e.target !== messageInput) {
+                shortcutList.style.display = 'none';
+            }
         });
     </script>
 </body>

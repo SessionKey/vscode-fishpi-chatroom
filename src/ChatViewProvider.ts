@@ -8,6 +8,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private chatService?: ChatService;
     private messageHistory: any[] = [];
+    private isFirstConnection: boolean = true;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -32,7 +33,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
         if (!this.chatService) {
             this.chatService = new ChatService((message) => {
-                this.messageHistory.push(message);
+                if (this.isFirstConnection) {
+                    this.messageHistory.push(message);
+                }
                 this._view?.webview.postMessage({
                     type: 'receiveMessage',
                     data: message
@@ -49,6 +52,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     if (sessionId) {
                         this.chatService?.setSessionId(sessionId);
                         try {
+                            this.isFirstConnection = true;
                             await this.chatService?.connect();
                             const username = SessionConfig.getUsername();
                             this._view?.webview.postMessage({
@@ -70,6 +74,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await SessionConfig.setSessionId(sessionId);
                         await SessionConfig.setUsername(message.username);
                         this.chatService?.setSessionId(sessionId);
+                        this.isFirstConnection = true;
                         await this.chatService?.connect();
                         this._view?.webview.postMessage({
                             type: 'loginSuccess',
@@ -86,6 +91,42 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'showError':
                     vscode.window.showErrorMessage(message.message);
+                    break;
+                case 'confirmDelete':
+                    vscode.window.showWarningMessage(
+                        `确定要删除快捷语句 "${message.shortcut}" 吗？`,
+                        { modal: true },
+                        '确定',
+                        '取消'
+                    ).then(selection => {
+                        if (selection === '确定') {
+                            this._view?.webview.postMessage({
+                                type: 'deleteShortcut',
+                                index: message.index
+                            });
+                        }
+                    });
+                    break;
+                case 'showInputBox':
+                    vscode.window.showInputBox({
+                        prompt: message.message,
+                        placeHolder: '输入快捷语句',
+                        value: '',
+                        ignoreFocusOut: true, // 当失去焦点时不会关闭输入框
+                        validateInput: text => {
+                            if (!text) {
+                                return '快捷语句不能为空';
+                            }
+                            return null; // 返回 null 表示验证通过
+                        }
+                    }).then(value => {
+                        if (value !== undefined) { // undefined 表示用户取消了输入
+                            this._view?.webview.postMessage({
+                                type: 'addShortcut',
+                                value: value
+                            });
+                        }
+                    });
                     break;
                 case 'updateImageSetting':
                     await vscode.workspace.getConfiguration().update(
@@ -109,6 +150,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 const newSessionId = SessionConfig.getSessionId();
                 if (newSessionId && this.chatService) {
                     this.chatService.setSessionId(newSessionId);
+                    this.isFirstConnection = true;
                     this.chatService.connect().then(() => {
                         this._view?.webview.postMessage({
                             type: 'loginSuccess',
@@ -124,12 +166,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     public dispose() {
         this.chatService?.disconnect();
+        this.isFirstConnection = false;
         ChatViewProvider.instance = undefined;
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
-        const htmlPath = vscode.Uri.joinPath(this._extensionUri, 'src', 'webview', 'chat.html');
-        let html = require('fs').readFileSync(htmlPath.fsPath, 'utf-8');
+        const html = require('./webview/chat.html');
         return html;
     }
 } 
